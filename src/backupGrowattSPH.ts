@@ -30,7 +30,7 @@ async function runBackup() {
     const fromInputRegisters1 = await modbusClient.readInputRegisters(0, 125)
     const fromInputRegisters2 = await modbusClient.readInputRegisters(1000, 125)
 
-    let backupText: string = ""
+    let backupText: string = "";
 
     backupText = backupText.concat("Growatt Registers Backup\nHolding Registers 0-124\n")
 

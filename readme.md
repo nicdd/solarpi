@@ -49,6 +49,8 @@ Home Assistant automations can be simply written to control when the battery is 
 
 I have built SolarPi to interface my Growatt SPH3000 with Home Assistant without relying on the Growatt web API or interferring with the Growatt Datalogger/WiFi dongle. That is to say the Growatt web dashboard and the Growatt ShinePhone app still work (as well as they ever did). My approach uses a standard serial port interface on the inverter in accordance with the Growatt Modbus Inverter RTU Protocol document v.1.20.
 
+2024 has been extended for SPF5000 inverter.
+
 **The RS485 port on the inverter must be available and not used by any other external device, i.e. there should be nothing plugged into it already!**
 
 I am running this code on a Raspberry Pi Zero W with an RS485-USB adapter (specifically this: https://amzn.eu/d/foIEFqZ, but others should work), I have the USB adapter plugged into the Pi using a micro-USB (male) to USB A (female) OTG adapter cable.
@@ -157,7 +159,7 @@ Edit the file /opt/solarpi/options.json to provide the following:
 * The username and password to access your MQTT broker (these are set in Home Assistant) ("username" and "password" in the options file).
 Note you can use an SSL secured connection to your MQTT broker with a URL such as mqtts://home-assistant.domain:8883
 * Set the time in seconds between each poll for values from the inverter ("interval" in the options file)
-* The Inverter Model can currently be set to either SPH3000 or SPH6000 but nothing else as no other models have been defined yet (feel free to adapt the code to support other models though!)
+* The Inverter Model can currently be set to either SPH3000 or SPH6000 or SPF5000 but nothing else as no other models have been defined yet (feel free to adapt the code to support other models though!)
 * Set the USB device path based on Installation Steps 5 and 6 above, prefixing the path with /dev (e.g. /dev/ttyUSB0) ("usbDevice" in the options file)
 
 ### Starting SolarPi
