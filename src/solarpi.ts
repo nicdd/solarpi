@@ -5,6 +5,7 @@ import { getConfig, models } from "./config.js"
 import { InverterClient } from "./inverterClient.js"
 import { logDate } from "./logDate.js"
 import { GrowattSPH3000 } from "./growattSPH3000.js"
+import { GrowattSPF5000 } from "./growattSPF5000.js"
 import { ControlData, Inverter } from "./inverter.js"
 
 console.log(`${logDate()} Starting SolarPi`)
@@ -21,7 +22,10 @@ switch (config.inverter.model) {
     case models.SPH3000:
     case models.SPH6000:
         inverter = new GrowattSPH3000() // 3000 and 6000 appear to use the same structures
-        break
+        break;
+	case models.SPF5000:
+		inverter = new GrowattSPF5000();
+		break
     default:
         console.error("Unsupported inverter model in configuration:", config.inverter.model)
         process.exit()

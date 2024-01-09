@@ -16,6 +16,7 @@ export interface MqttConfig {
 export enum models{
     SPH3000 = "SPH3000",
     SPH6000 = "SPH6000",
+	SPF5000 = "SPF5000",
     Other = "Other"
 }
 

@@ -9,44 +9,17 @@ import { Mutex } from 'async-mutex'
 import { logDate } from "./logDate.js"
 
 interface TouChargingValues {
-    chargePower: number,
-    stopSOC: number,
-    ac: string,
-    startHour1: number,
-    startMinute1: number,
-    stopHour1: number,
-    stopMinute1: number,
-    enablePeriod1: string,
-    startHour2: number,
-    startMinute2: number,
-    stopHour2: number,
-    stopMinute2: number,
-    enablePeriod2: string,
-    startHour3: number,
-    startMinute3: number,
-    stopHour3: number,
-    stopMinute3: number,
-    enablePeriod3: string
+    
+    uwAC2BatVolt: number, // We assume that we are using lithium battery, that is why the interval is 0-100 % default 50%. Switch from Utility AC to Battery
+    chargeConfig: number,
+    utiChargeStart: number,    
+    utiChargeEnd: number      
 }
 
 interface TouDischargingValues {
-    dischargePower: number,
-    dischargeStopSOC: number,
-    startHour1: number,
-    startMinute1: number,
-    stopHour1: number,
-    stopMinute1: number,
-    enablePeriod1: string,
-    startHour2: number,
-    startMinute2: number,
-    stopHour2: number,
-    stopMinute2: number,
-    enablePeriod2: string,
-    startHour3: number,
-    startMinute3: number,
-    stopHour3: number,
-    stopMinute3: number,
-    enablePeriod3: string
+    batLowToUtiVolt: number, // We assume that we are using lithium battery, that is why the interval is 0-100 % default 30%. Switch from Battery to Utility AC
+    utiOutStart: number,    
+    utiOutEnd: number      
 }
 
 interface TimeValues {
@@ -59,6 +32,31 @@ interface TimeValues {
 }
 
 export class GrowattSPF5000 implements Inverter {
+
+	/** What do I want to know from the Holding Reg Values (W = By User writable = true/false)
+	----------------------------------------------------------------------------------------
+	|RegNo	|	VariableName   | W		|	Description 
+	----------------------------------------------------------------------------------------
+	00		*	On/Off			* false	*	The Standby On/Off state and the AC output DisEN/EN state; The low byte is the Standby on/off(1/0), 
+											the high byte is the AC output disable/enable (1/0). ex: 0x0101 means inverter on
+	01		*	OutputConfig	* true	*	AC output set: 0: BAT First; 1: PV First; 2: UTI First; 3: PV&UTI First
+	02		*	ChargeConfig	* true	*	Charge source set: 0: PV first; 1: PV&UTI; 2: PV Only;
+	03		*	UtiOutStart		* true	*	Uti Output Start Time: 0-23 Hour
+	04		*	UtiOutEnd		* true	*	Uti Output End Time: 0-23 Hour
+	05		*	UtiChargeStart	* true	*	Uti Charge Start Time: 0-23 Hour
+	06		*	UtiChargeEnd	* true	*	Uti Charge End Time: 0-23 Hour
+	12		*	Fw version2 H	* false	*	Control Firmware version (high) Ascii
+	13		*	Fw version2 M	* false	*	Control Firmware version (middle) Ascii
+	14		*	Fw version2 L	* false	*	Control Firmware version (low) Ascii
+	18		*	OutputVoltType	* true	*	0: 208VAC; 1: 230VAC 2: 240VAC 3:220VAC 4:100VAC 5:110VAC 6:120VAC
+	22		*	BuzzerEN		* true	*	1:Enable;	0:Disable;	
+	37		*	BatLowToUtiVolt	* true	*	Bat Low Volt Switch To Uti 200~640 (non Lithium) or 5~100 (Lithium) default: 460 Or 50%
+	82		*	wBatLowCutOff	* false	*	Bat voltage low cutoff 200~640 (non Lithium) or 5~100 (Lithium) default: 460 Or 50%
+	95		*	uwAC2BatVolt	* false	*	AC switch to Battery 200~640 (non Lithium) or 5~100 (Lithium) default: 460 Or 50%
+	
+	ToDo: read all interesting registers not only charge and discharge, see example "Get Inverter Time"
+	*/	
+
     mutex = new Mutex()
 
     private sensorEntities: SensorEntity[] = [
@@ -364,228 +362,67 @@ export class GrowattSPF5000 implements Inverter {
     ]
 
     private touChargingControlEntities: ControlEntity[] = [
-        {
-            name: "Charge Power",
-            type: "number",
-            state_class: "measurement",
-            unit_of_measurement: "%",
-            unique_id: "solarpi_tou_charge_power",
-            value_template: "{{ value_json.chargePower }}",
-            command_template: '{{ {"chargePower": value} }}',
-            mode: "box",
-            min: 0,
-            max: 100,
-            icon: "mdi:lightning-bolt"
-        },
+        
         {
             name: "Charge Stop SOC",
             type: "number",
             state_class: "measurement",
             unit_of_measurement: "%",
             unique_id: "solarpi_tou_charge_stop_soc",
-            value_template: "{{ value_json.stopSOC }}",
-            command_template: '{{ {"stopSOC": value} }}',
+            value_template: "{{ value_json.uwAC2BatVolt }}",
+            command_template: '{{ {"uwAC2BatVolt": value} }}',
             mode: "box",
             min: 0,
             max: 100,
             icon: "mdi:lightning-bolt"
         },
         {
-            name: "Charge Using AC",
-            type: "switch",
-            unique_id: "solarpi_tou_charge_ac",
-            value_template: "{{ value_json.ac }}",
-            payload_off: '{"ac": "OFF"}',
-            payload_on: '{"ac": "ON"}',
-            state_off: "OFF",
-            state_on: "ON",
+            name: "Charge Config",
+            type: "number",
+            unique_id: "solarpi_tou_charge_config",
+            value_template: "{{ value_json.chargeConfig }}",
+			command_template: '{{ {"chargeConfig": value} }}',
+            mode: "box",
+            min: 0,
+            max: 2,            
             icon: "mdi:lightning-bolt"
         },
         {
             name: "Charge 1 Start Hour",
             type: "number",
             unique_id: "solarpi_tou_charge_1_start_hour",
-            value_template: "{{ value_json.startHour1 }}",
-            command_template: '{{ {"startHour1": value} }}',
+            value_template: "{{ value_json.utiChargeStart }}",
+            command_template: '{{ {"utiChargeStart": value} }}',
             mode: "box",
             min: 0,
             max: 23,
             icon: "mdi:clock-outline"
         },
-        {
-            name: "Charge 1 Start Minute",
-            type: "number",
-            unique_id: "solarpi_tou_charge_1_start_minute",
-            value_template: "{{ value_json.startMinute1 }}",
-            command_template: '{{ {"startMinute1": value} }}',
-            mode: "box",
-            icon: "mdi:clock-outline"
-        },
+        
         {
             name: "Charge 1 Stop Hour",
             type: "number",
             unique_id: "solarpi_tou_charge_1_stop_hour",
-            value_template: "{{ value_json.stopHour1 }}",
-            command_template: '{{ {"stopHour1": value} }}',
+            value_template: "{{ value_json.utiChargeEnd }}",
+            command_template: '{{ {"utiChargeEnd": value} }}',
             mode: "box",
             min: 0,
             max: 23,
             icon: "mdi:clock-outline"
-        },
-        {
-            name: "Charge 1 Stop Minute",
-            type: "number",
-            unique_id: "solarpi_tou_charge_1_stop_minute",
-            value_template: "{{ value_json.stopMinute1 }}",
-            command_template: '{{ {"stopMinute1": value} }}',
-            mode: "box",
-            icon: "mdi:clock-outline"
-        },
-        {
-            name: "Charge 1 Enable",
-            type: "switch",
-            unique_id: "solarpi_tou_charge_1_enable",
-            value_template: "{{ value_json.enablePeriod1 }}",
-            payload_off: '{"enablePeriod1": "OFF"}',
-            payload_on: '{"enablePeriod1": "ON"}',
-            state_off: "OFF",
-            state_on: "ON",
-            icon: "mdi:lightning-bolt"
-        },
-        {
-            name: "Charge 2 Start Hour",
-            type: "number",
-            unique_id: "solarpi_tou_charge_2_start_hour",
-            value_template: "{{ value_json.startHour2 }}",
-            command_template: '{{ {"startHour2": value} }}',
-            mode: "box",
-            min: 0,
-            max: 23,
-            icon: "mdi:clock-outline"
-        },
-        {
-            name: "Charge 2 Start Minute",
-            type: "number",
-            unique_id: "solarpi_tou_charge_2_start_minute",
-            value_template: "{{ value_json.startMinute2 }}",
-            command_template: '{{ {"startMinute2": value} }}',
-            mode: "box",
-            min: 0,
-            max: 59,
-            icon: "mdi:clock-outline"
-        },
-        {
-            name: "Charge 2 Stop Hour",
-            type: "number",
-            unique_id: "solarpi_tou_charge_2_stop_hour",
-            value_template: "{{ value_json.stopHour2 }}",
-            command_template: '{{ {"stopHour2": value} }}',
-            mode: "box",
-            min: 0,
-            max: 23,
-            icon: "mdi:clock-outline"
-        },
-        {
-            name: "Charge 2 Stop Minute",
-            type: "number",
-            unique_id: "solarpi_tou_charge_2_stop_minute",
-            value_template: "{{ value_json.stopMinute2 }}",
-            command_template: '{{ {"stopMinute2": value} }}',
-            mode: "box",
-            min: 0,
-            max: 59,
-            icon: "mdi:clock-outline"
-        },
-        {
-            name: "Charge 2 Enable",
-            type: "switch",
-            unique_id: "solarpi_tou_charge_2_enable",
-            value_template: "{{ value_json.enablePeriod2 }}",
-            payload_off: '{"enablePeriod2": "OFF"}',
-            payload_on: '{"enablePeriod2": "ON"}',
-            state_off: "OFF",
-            state_on: "ON",
-            icon: "mdi:lightning-bolt"
-        },
-        {
-            name: "Charge 3 Start Hour",
-            type: "number",
-            unique_id: "solarpi_tou_charge_3_start_hour",
-            value_template: "{{ value_json.startHour3 }}",
-            command_template: '{{ {"startHour3": value} }}',
-            mode: "box",
-            min: 0,
-            max: 23,
-            icon: "mdi:clock-outline"
-        },
-        {
-            name: "Charge 3 Start Minute",
-            type: "number",
-            unique_id: "solarpi_tou_charge_3_start_minute",
-            value_template: "{{ value_json.startMinute3 }}",
-            command_template: '{{ {"startMinute3": value} }}',
-            mode: "box",
-            min: 0,
-            max: 59,
-            icon: "mdi:clock-outline"
-        },
-        {
-            name: "Charge 3 Stop Hour",
-            type: "number",
-            unique_id: "solarpi_tou_charge_3_stop_hour",
-            value_template: "{{ value_json.stopHour3 }}",
-            command_template: '{{ {"stopHour3": value} }}',
-            mode: "box",
-            min: 0,
-            max: 23,
-            icon: "mdi:clock-outline"
-        },
-        {
-            name: "Charge 3 Stop Minute",
-            type: "number",
-            unique_id: "solarpi_tou_charge_3_stop_minute",
-            value_template: "{{ value_json.stopMinute3 }}",
-            command_template: '{{ {"stopMinute3": value} }}',
-            mode: "box",
-            min: 0,
-            max: 59,
-            icon: "mdi:clock-outline"
-        },
-        {
-            name: "Charge 3 Enable",
-            type: "switch",
-            unique_id: "solarpi_tou_charge_3_enable",
-            value_template: "{{ value_json.enablePeriod3 }}",
-            payload_off: '{"enablePeriod3": "OFF"}',
-            payload_on: '{"enablePeriod3": "ON"}',
-            state_off: "OFF",
-            state_on: "ON",
-            icon: "mdi:lightning-bolt"
         }
+        
     ]
 
     private touDischargingControlEntities: ControlEntity[] = [
-        {
-            name: "Discharge Power",
-            type: "number",
-            state_class: "measurement",
-            unit_of_measurement: "%",
-            unique_id: "solarpi_tou_discharge_power",
-            value_template: "{{ value_json.dischargePower }}",
-            command_template: '{{ {"dischargePower": value} }}',
-            mode: "box",
-            min: 0,
-            max: 100,
-            icon: "mdi:lightning-bolt"
-        },
+        
         {
             name: "Discharge Stop SOC",
             type: "number",
             state_class: "measurement",
             unit_of_measurement: "%",
             unique_id: "solarpi_tou_discharge_stop_soc",
-            value_template: "{{ value_json.dischargeStopSOC }}",
-            command_template: '{{ {"dischargeStopSOC": value} }}',
+            value_template: "{{ value_json.batLowToUtiVolt }}",
+            command_template: '{{ {"batLowToUtiVolt": value} }}',
             mode: "box",
             min: 0,
             max: 100,
@@ -595,208 +432,41 @@ export class GrowattSPF5000 implements Inverter {
             name: "Discharge 1 Start Hour",
             type: "number",
             unique_id: "solarpi_tou_discharge_1_start_hour",
-            value_template: "{{ value_json.startHour1 }}",
-            command_template: '{{ {"startHour1": value} }}',
+            value_template: "{{ value_json.utiOutStart }}",
+            command_template: '{{ {"utiOutStart": value} }}',
             mode: "box",
             min: 0,
             max: 23,
             icon: "mdi:clock-outline"
-        },
-        {
-            name: "Discharge 1 Start Minute",
-            type: "number",
-            unique_id: "solarpi_tou_discharge_1_start_minute",
-            value_template: "{{ value_json.startMinute1 }}",
-            command_template: '{{ {"startMinute1": value} }}',
-            mode: "box",
-            icon: "mdi:clock-outline"
-        },
+        },        
         {
             name: "Discharge 1 Stop Hour",
             type: "number",
             unique_id: "solarpi_tou_discharge_1_stop_hour",
-            value_template: "{{ value_json.stopHour1 }}",
-            command_template: '{{ {"stopHour1": value} }}',
+            value_template: "{{ value_json.utiOutEnd }}",
+            command_template: '{{ {"utiOutEnd": value} }}',
             mode: "box",
             min: 0,
             max: 23,
             icon: "mdi:clock-outline"
-        },
-        {
-            name: "Discharge 1 Stop Minute",
-            type: "number",
-            unique_id: "solarpi_tou_discharge_1_stop_minute",
-            value_template: "{{ value_json.stopMinute1 }}",
-            command_template: '{{ {"stopMinute1": value} }}',
-            mode: "box",
-            icon: "mdi:clock-outline"
-        },
-        {
-            name: "Discharge 1 Enable",
-            type: "switch",
-            unique_id: "solarpi_tou_discharge_1_enable",
-            value_template: "{{ value_json.enablePeriod1 }}",
-            payload_off: '{"enablePeriod1": "OFF"}',
-            payload_on: '{"enablePeriod1": "ON"}',
-            state_off: "OFF",
-            state_on: "ON",
-            icon: "mdi:lightning-bolt"
-        },
-        {
-            name: "Discharge 2 Start Hour",
-            type: "number",
-            unique_id: "solarpi_tou_discharge_2_start_hour",
-            value_template: "{{ value_json.startHour2 }}",
-            command_template: '{{ {"startHour2": value} }}',
-            mode: "box",
-            min: 0,
-            max: 23,
-            icon: "mdi:clock-outline"
-        },
-        {
-            name: "Discharge 2 Start Minute",
-            type: "number",
-            unique_id: "solarpi_tou_discharge_2_start_minute",
-            value_template: "{{ value_json.startMinute2 }}",
-            command_template: '{{ {"startMinute2": value} }}',
-            mode: "box",
-            min: 0,
-            max: 59,
-            icon: "mdi:clock-outline"
-        },
-        {
-            name: "Discharge 2 Stop Hour",
-            type: "number",
-            unique_id: "solarpi_tou_discharge_2_stop_hour",
-            value_template: "{{ value_json.stopHour2 }}",
-            command_template: '{{ {"stopHour2": value} }}',
-            mode: "box",
-            min: 0,
-            max: 23,
-            icon: "mdi:clock-outline"
-        },
-        {
-            name: "Discharge 2 Stop Minute",
-            type: "number",
-            unique_id: "solarpi_tou_discharge_2_stop_minute",
-            value_template: "{{ value_json.stopMinute2 }}",
-            command_template: '{{ {"stopMinute2": value} }}',
-            mode: "box",
-            min: 0,
-            max: 59,
-            icon: "mdi:clock-outline"
-        },
-        {
-            name: "Discharge 2 Enable",
-            type: "switch",
-            unique_id: "solarpi_tou_discharge_2_enable",
-            value_template: "{{ value_json.enablePeriod2 }}",
-            payload_off: '{"enablePeriod2": "OFF"}',
-            payload_on: '{"enablePeriod2": "ON"}',
-            state_off: "OFF",
-            state_on: "ON",
-            icon: "mdi:lightning-bolt"
-        },
-        {
-            name: "Discharge 3 Start Hour",
-            type: "number",
-            unique_id: "solarpi_tou_discharge_3_start_hour",
-            value_template: "{{ value_json.startHour3 }}",
-            command_template: '{{ {"startHour3": value} }}',
-            mode: "box",
-            min: 0,
-            max: 23,
-            icon: "mdi:clock-outline"
-        },
-        {
-            name: "Discharge 3 Start Minute",
-            type: "number",
-            unique_id: "solarpi_tou_discharge_3_start_minute",
-            value_template: "{{ value_json.startMinute3 }}",
-            command_template: '{{ {"startMinute3": value} }}',
-            mode: "box",
-            min: 0,
-            max: 59,
-            icon: "mdi:clock-outline"
-        },
-        {
-            name: "Discharge 3 Stop Hour",
-            type: "number",
-            unique_id: "solarpi_tou_discharge_3_stop_hour",
-            value_template: "{{ value_json.stopHour3 }}",
-            command_template: '{{ {"stopHour3": value} }}',
-            mode: "box",
-            min: 0,
-            max: 23,
-            icon: "mdi:clock-outline"
-        },
-        {
-            name: "Discharge 3 Stop Minute",
-            type: "number",
-            unique_id: "solarpi_tou_discharge_3_stop_minute",
-            value_template: "{{ value_json.stopMinute3 }}",
-            command_template: '{{ {"stopMinute3": value} }}',
-            mode: "box",
-            min: 0,
-            max: 59,
-            icon: "mdi:clock-outline"
-        },
-        {
-            name: "Discharge 3 Enable",
-            type: "switch",
-            unique_id: "solarpi_tou_discharge_3_enable",
-            value_template: "{{ value_json.enablePeriod3 }}",
-            payload_off: '{"enablePeriod3": "OFF"}',
-            payload_on: '{"enablePeriod3": "ON"}',
-            state_off: "OFF",
-            state_on: "ON",
-            icon: "mdi:lightning-bolt"
         }
     ]
 
     // Object to retain TOU charging values which have been read from the inverter
     // or modified by MQTT messages
     private touChargingValues: TouChargingValues = {
-        chargePower: 100,
-        stopSOC: 100,
-        ac: "OFF",
-        startHour1: 0,
-        startMinute1: 0,
-        stopHour1: 0,
-        stopMinute1: 0,
-        enablePeriod1: "OFF",
-        startHour2: 0,
-        startMinute2: 0,
-        stopHour2: 0,
-        stopMinute2: 0,
-        enablePeriod2: "OFF",
-        startHour3: 0,
-        startMinute3: 0,
-        stopHour3: 0,
-        stopMinute3: 0,
-        enablePeriod3: "OFF"
+        uwAC2BatVolt: 50,
+        chargeConfig: 0,
+        utiChargeStart: 0,        
+        utiChargeEnd: 0              
     }
 
-    // Object to retain TOU charging values which have been read from the inverter
+    // Object to retain TOU discharging values which have been read from the inverter
     // or modified by MQTT messages
     private touDischargingValues: TouDischargingValues = {
-        dischargePower: 100,
-        dischargeStopSOC: 5,
-        startHour1: 0,
-        startMinute1: 0,
-        stopHour1: 0,
-        stopMinute1: 0,
-        enablePeriod1: "OFF",
-        startHour2: 0,
-        startMinute2: 0,
-        stopHour2: 0,
-        stopMinute2: 0,
-        enablePeriod2: "OFF",
-        startHour3: 0,
-        startMinute3: 0,
-        stopHour3: 0,
-        stopMinute3: 0,
-        enablePeriod3: "OFF"
+        batLowToUtiVolt: 30,
+        utiOutStart: 0,        
+        utiOutEnd: 0        
     }
 
     // Wrapper methods to allow use of mutex as it seems ModbusRTU allows
@@ -915,30 +585,13 @@ export class GrowattSPF5000 implements Inverter {
         const schema = {
             type: "object",
             properties: {
-                chargePower: { type: "number", minimum: 0, maximum: 100 },
-                stopSOC: { type: "number", minimum: 0, maximum: 100 },
-                ac: { type: "string", pattern: "ON|OFF" },
-                startHour1: { type: "number", minimum: 0, maximum: 23 },
-                startMinute1: { type: "number", minimum: 0, maximum: 59 },
-                stopHour1: { type: "number", minimum: 0, maximum: 23 },
-                stopMinute1: { type: "number", minimum: 0, maximum: 59 },
-                enablePeriod1: { type: "string", pattern: "ON|OFF" },
-                startHour2: { type: "number", minimum: 0, maximum: 23 },
-                startMinute2: { type: "number", minimum: 0, maximum: 59 },
-                stopHour2: { type: "number", minimum: 0, maximum: 23 },
-                stopMinute2: { type: "number", minimum: 0, maximum: 59 },
-                enablePeriod2: { type: "string", pattern: "ON|OFF" },
-                startHour3: { type: "number", minimum: 0, maximum: 23 },
-                startMinute3: { type: "number", minimum: 0, maximum: 59 },
-                stopHour3: { type: "number", minimum: 0, maximum: 23 },
-                stopMinute3: { type: "number", minimum: 0, maximum: 59 },
-                enablePeriod3: { type: "string", pattern: "ON|OFF" }
+                uwAC2BatVolt: { type: "number", minimum: 0, maximum: 100 },// We assume that we are using lithium battery, that is why the interval is 0-100 %
+                chargeConfig: { type: "number", minimum: 0, maximum: 2 },//default 0 PV First, 1 PV&Utility, 2 PV Only
+                utiChargeStart: { type: "number", minimum: 0, maximum: 23 },
+                utiChargeEnd: { type: "number", minimum: 0, maximum: 23 }
+                
             },
-            required: ["chargePower", "stopSOC", "ac", "startHour1", "startMinute1",
-                "stopHour1", "stopMinute1", "enablePeriod1", "startHour2",
-                "startMinute2", "stopHour2", "stopMinute2", "enablePeriod2",
-                "startHour3", "startMinute3", "stopHour3", "stopMinute3",
-                "enablePeriod3"],
+            required: ["uwAC2BatVolt", "chargeConfig", "utiChargeStart", "utiChargeEnd"],
             additionalProperties: false
         }
         const validate = ajv.compile(schema)
@@ -947,28 +600,23 @@ export class GrowattSPF5000 implements Inverter {
             throw "Error validating setTouCharging"
         }
 
-        const writeRegisters1: Array<number> = [
-            this.touChargingValues.chargePower,
-            this.touChargingValues.stopSOC,
-            (this.touChargingValues.ac === "ON") ? 1 : 0
+        const writeRegisters1: Array<number> = [            
+            this.touChargingValues.uwAC2BatVolt
+        ]
+		const writeRegisters2: Array<number> = [            
+            this.touChargingValues.chargeConfig
+        ]
+        const writeRegisters3: Array<number> = [
+            (this.touChargingValues.utiChargeStart << 8),
+            (this.touChargingValues.utiChargeEnd << 8)
         ]
 
-        const writeRegisters2: Array<number> = [
-            (this.touChargingValues.startHour1 << 8) | this.touChargingValues.startMinute1,
-            (this.touChargingValues.stopHour1 << 8) | this.touChargingValues.stopMinute1,
-            this.touChargingValues.enablePeriod1 === "ON" ? 1 : 0,
-            (this.touChargingValues.startHour2 << 8) | this.touChargingValues.startMinute2,
-            (this.touChargingValues.stopHour2 << 8) | this.touChargingValues.stopMinute2,
-            this.touChargingValues.enablePeriod2 === "ON" ? 1 : 0,
-            (this.touChargingValues.startHour3 << 8) | this.touChargingValues.startMinute3,
-            (this.touChargingValues.stopHour3 << 8) | this.touChargingValues.stopMinute3,
-            this.touChargingValues.enablePeriod3 === "ON" ? 1 : 0
-        ]
-
-        // Write writeRegisters1 to holding registers 1090-1092
-        await this.writeRegisters(modbusClient, 1090, writeRegisters1)
-        // Write writeRegisters2 to holding registers 1100-1108
-        await this.writeRegisters(modbusClient, 1100, writeRegisters2)
+        // Write writeRegisters1 to holding register 95
+        await this.writeRegisters(modbusClient, 95, writeRegisters1)
+		// Write writeRegisters2 to holding register 02
+        await this.writeRegisters(modbusClient, 2, writeRegisters2)
+        // Write writeRegisters3 to holding registers 05-06
+        await this.writeRegisters(modbusClient, 5, writeRegisters3)
     }
 
     private async setTouDischarging(modbusClient: ModbusRTU): Promise<void> {
@@ -977,29 +625,11 @@ export class GrowattSPF5000 implements Inverter {
         const schema = {
             type: "object",
             properties: {
-                dischargePower: { type: "number", minimum: 0, maximum: 100 },
-                dischargeStopSOC: { type: "number", minimum: 0, maximum: 100 },
-                startHour1: { type: "number", minimum: 0, maximum: 23 },
-                startMinute1: { type: "number", minimum: 0, maximum: 59 },
-                stopHour1: { type: "number", minimum: 0, maximum: 23 },
-                stopMinute1: { type: "number", minimum: 0, maximum: 59 },
-                enablePeriod1: { type: "string", pattern: "ON|OFF" },
-                startHour2: { type: "number", minimum: 0, maximum: 23 },
-                startMinute2: { type: "number", minimum: 0, maximum: 59 },
-                stopHour2: { type: "number", minimum: 0, maximum: 23 },
-                stopMinute2: { type: "number", minimum: 0, maximum: 59 },
-                enablePeriod2: { type: "string", pattern: "ON|OFF" },
-                startHour3: { type: "number", minimum: 0, maximum: 23 },
-                startMinute3: { type: "number", minimum: 0, maximum: 59 },
-                stopHour3: { type: "number", minimum: 0, maximum: 23 },
-                stopMinute3: { type: "number", minimum: 0, maximum: 59 },
-                enablePeriod3: { type: "string", pattern: "ON|OFF" }
+                batLowToUtiVolt: { type: "number", minimum: 20, maximum: 90 },
+                utiOutStart: { type: "number", minimum: 0, maximum: 23 },
+                utiOutEnd: { type: "number", minimum: 0, maximum: 23 }
             },
-            required: ["dischargePower", "dischargeStopSOC", "startHour1", "startMinute1",
-                "stopHour1", "stopMinute1", "enablePeriod1", "startHour2",
-                "startMinute2", "stopHour2", "stopMinute2", "enablePeriod2",
-                "startHour3", "startMinute3", "stopHour3", "stopMinute3",
-                "enablePeriod3"],
+            required: ["batLowToUtiVolt", "utiOutStart", "utiOutEnd"],
             additionalProperties: false
         }
         const validate = ajv.compile(schema)
@@ -1009,86 +639,58 @@ export class GrowattSPF5000 implements Inverter {
         }
 
         const writeRegisters1: Array<number> = [
-            this.touDischargingValues.dischargePower,
-            this.touDischargingValues.dischargeStopSOC
+            this.touDischargingValues.batLowToUtiVolt
         ]
 
         const writeRegisters2: Array<number> = [
-            (this.touDischargingValues.startHour1 << 8) | this.touDischargingValues.startMinute1,
-            (this.touDischargingValues.stopHour1 << 8) | this.touDischargingValues.stopMinute1,
-            this.touDischargingValues.enablePeriod1 === "ON" ? 1 : 0,
-            (this.touDischargingValues.startHour2 << 8) | this.touDischargingValues.startMinute2,
-            (this.touDischargingValues.stopHour2 << 8) | this.touDischargingValues.stopMinute2,
-            this.touDischargingValues.enablePeriod2 === "ON" ? 1 : 0,
-            (this.touDischargingValues.startHour3 << 8) | this.touDischargingValues.startMinute3,
-            (this.touDischargingValues.stopHour3 << 8) | this.touDischargingValues.stopMinute3,
-            this.touDischargingValues.enablePeriod3 === "ON" ? 1 : 0
+            (this.touDischargingValues.utiOutStart << 8),
+            (this.touDischargingValues.utiOutEnd << 8)
         ]
 
-        // Write writeRegisters1 to holding registers 1070-1071
-        await this.writeRegisters(modbusClient, 1070, writeRegisters1)
-        // Write writeRegisters2 to holding registers 1080-1088
-        await this.writeRegisters(modbusClient, 1080, writeRegisters2)
+        // Write writeRegisters1 to holding register 37
+        await this.writeRegisters(modbusClient, 37, writeRegisters1)
+        // Write writeRegisters2 to holding registers 03-04
+        await this.writeRegisters(modbusClient, 3, writeRegisters2)
     }
 
     private async getTouCharging(modbusClient: ModbusRTU): Promise<TouChargingValues> {
-        const holdingRegisters1 = await this.readHoldingRegisters(modbusClient, 1090, 3)
-        const holdingRegisters2 = await this.readHoldingRegisters(modbusClient, 1100, 9)
+        const holdingRegisters1 = await this.readHoldingRegisters(modbusClient, 0, 7)
+		const holdingRegisters2 = await this.readHoldingRegisters(modbusClient, 95, 1)
+        //const holdingRegisters3 = await this.readHoldingRegisters(modbusClient, 12, 3) // Firmware Version, evtl to the sensor entities		
+        //const holdingRegisters4 = await this.readHoldingRegisters(modbusClient, 22, 1) //Buzzer on/off
 
         const { data: data1 } = holdingRegisters1
         const { data: data2 } = holdingRegisters2
+		//const { data: data3 } = holdingRegisters3
+        //const { data: data4 } = holdingRegisters4
 
         // TODO review why this is saved to class scoped variable and returned from a private function
         this.touChargingValues = {
-            chargePower: data1[0],
-            stopSOC: data1[1],
-            ac: (data1[2] == 1) ? "ON" : "OFF",
-            startHour1: data2[0] >> 8,
-            startMinute1: data2[0] & 0xFF,
-            stopHour1: data2[1] >> 8,
-            stopMinute1: data2[1] & 0xFF,
-            enablePeriod1: (data2[2] == 1) ? "ON" : "OFF",
-            startHour2: data2[3] >> 8,
-            startMinute2: data2[3] & 0xFF,
-            stopHour2: data2[4] >> 8,
-            stopMinute2: data2[4] & 0xFF,
-            enablePeriod2: (data2[5] == 1) ? "ON" : "OFF",
-            startHour3: data2[6] >> 8,
-            startMinute3: data2[6] & 0xFF,
-            stopHour3: data2[7] >> 8,
-            stopMinute3: data2[7] & 0xFF,
-            enablePeriod3: (data2[8] == 1) ? "ON" : "OFF"
+            uwAC2BatVolt: data2[0],
+            chargeConfig: data1[2],
+            utiChargeStart: data1[6] >> 8,            
+            utiChargeEnd: data1[7] >> 8            
         }
 
         return this.touChargingValues
     }
 
     private async getTouDischarging(modbusClient: ModbusRTU): Promise<TouDischargingValues> {
-        const holdingRegisters1 = await this.readHoldingRegisters(modbusClient, 1070, 2)
-        const holdingRegisters2 = await this.readHoldingRegisters(modbusClient, 1080, 9)
-
+		const holdingRegisters1 = await this.readHoldingRegisters(modbusClient, 3, 2)
+		//const holdingRegisters2 = await this.readHoldingRegisters(modbusClient, 18, 1) // Output Volt Type 230 110 etc
+		const holdingRegisters3 = await this.readHoldingRegisters(modbusClient, 37, 1)	// Battery Low to Utility
+		//const holdingRegisters4 = await this.readHoldingRegisters(modbusClient, 82, 1) // Battery Low Cut-off
+		
         const { data: data1 } = holdingRegisters1
-        const { data: data2 } = holdingRegisters2
+        //const { data: data2 } = holdingRegisters2
+		const { data: data3 } = holdingRegisters3
+		//const { data: data4 } = holdingRegisters4
 
         // TODO review why this is saved to class scoped variable and returned from a private function
         this.touDischargingValues = {
-            dischargePower: data1[0],
-            dischargeStopSOC: data1[1],
-            startHour1: data2[0] >> 8,
-            startMinute1: data2[0] & 0xFF,
-            stopHour1: data2[1] >> 8,
-            stopMinute1: data2[1] & 0xFF,
-            enablePeriod1: (data2[2] == 1) ? "ON" : "OFF",
-            startHour2: data2[3] >> 8,
-            startMinute2: data2[3] & 0xFF,
-            stopHour2: data2[4] >> 8,
-            stopMinute2: data2[4] & 0xFF,
-            enablePeriod2: (data2[5] == 1) ? "ON" : "OFF",
-            startHour3: data2[6] >> 8,
-            startMinute3: data2[6] & 0xFF,
-            stopHour3: data2[7] >> 8,
-            stopMinute3: data2[7] & 0xFF,
-            enablePeriod3: (data2[8] == 1) ? "ON" : "OFF"
+            batLowToUtiVolt: data3[0],
+            utiOutStart: data1[0] >> 8,            
+            utiOutEnd: data1[1] >> 8            
         }
 
         return this.touDischargingValues
