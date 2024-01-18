@@ -10,7 +10,7 @@ import { logDate } from "./logDate.js"
 
 interface TouChargingValues {
     
-    uwAC2BatVolt: number, // We assume that we are using lithium battery, that is why the interval is 0-100 % default 50%. Switch from Utility AC to Battery
+    uwAC2BatVolt: number, // We assume that we are using lithium battery, that is why the interval is 30-100 % default 50%. Switch from Utility AC to Battery
     chargeConfig: number,
     utiChargeStart: number,    
     utiChargeEnd: number      
@@ -114,6 +114,16 @@ export class GrowattSPF5000 implements Inverter {
             value_template: "{{ value_json.ppv2 }}",
             icon: "mdi:lightning-bolt"
         },
+		{
+            name: "Current to Battery 1",
+            type: "sensor",
+            device_class: "power",
+            state_class: "measurement",
+            unit_of_measurement: "A",
+            unique_id: "solarpi_buck1curr",
+            value_template: "{{ value_json.buck1curr }}",
+            icon: "mdi:lightning-bolt"
+        },
         {
             name: "PV Energy Today",
             type: "sensor",
@@ -215,6 +225,12 @@ export class GrowattSPF5000 implements Inverter {
             unique_id: "solarpi_power_to_load",
             value_template: "{{ value_json.pLoad }}",
             icon: "mdi:lightning-bolt"
+        },
+		{
+            name: "Constant Power Ok Status",
+            type: "sensor",
+            unique_id: "solarpi_constantpowerok",
+            value_template: "{{ value_json.constantpowerok }}"
         },
         {
             name: "Import Energy Today",
@@ -372,7 +388,7 @@ export class GrowattSPF5000 implements Inverter {
             value_template: "{{ value_json.uwAC2BatVolt }}",
             command_template: '{{ {"uwAC2BatVolt": value} }}',
             mode: "box",
-            min: 0,
+            min: 30,
             max: 100,
             icon: "mdi:lightning-bolt"
         },
@@ -424,7 +440,7 @@ export class GrowattSPF5000 implements Inverter {
             value_template: "{{ value_json.batLowToUtiVolt }}",
             command_template: '{{ {"batLowToUtiVolt": value} }}',
             mode: "box",
-            min: 0,
+            min: 20,
             max: 100,
             icon: "mdi:lightning-bolt"
         },
@@ -575,8 +591,22 @@ export class GrowattSPF5000 implements Inverter {
 
     public async getSensorData(modbusClient: ModbusRTU): Promise<{}> {
         // For SPF5000 read the 90 input register values starting at address 0
-        const inputRegisters = await this.readInputRegisters(modbusClient, 0, 90);       
-        return this.parseInputRegisters(inputRegisters);
+		const startdata1 = 0;
+		const lengthdata1 = 26;
+		const startdata2 = 26;
+		const lengthdata2= 25;
+		const startdata3 = 51;
+		const lengthdata3 = 25;
+		const startdata4 = 76;
+		const lengthdata4 = 15;
+		
+        const inputRegisters1 = await this.readInputRegisters(modbusClient, startdata1, lengthdata1);  
+        const inputRegisters2 = await this.readInputRegisters(modbusClient, startdata2, lengthdata2);
+		const inputRegisters3 = await this.readInputRegisters(modbusClient, startdata3, lengthdata3);
+		const inputRegisters4 = await this.readInputRegisters(modbusClient, startdata4, lengthdata4);
+
+        // Parse these two buffers then combine into an object and return
+        return { ...this.parseInputRegisters1(inputRegisters1), ...this.parseInputRegisters2(inputRegisters2, startdata2, inputRegisters3, startdata3), ...this.parseInputRegisters4(inputRegisters4, startdata4)}
     }
 
     private async setTouCharging(modbusClient: ModbusRTU): Promise<void> {
@@ -585,7 +615,7 @@ export class GrowattSPF5000 implements Inverter {
         const schema = {
             type: "object",
             properties: {
-                uwAC2BatVolt: { type: "number", minimum: 0, maximum: 100 },// We assume that we are using lithium battery, that is why the interval is 0-100 %
+                uwAC2BatVolt: { type: "number", minimum: 30, maximum: 100 },// We assume that we are using lithium battery, that is why the interval is 30-100 %
                 chargeConfig: { type: "number", minimum: 0, maximum: 2 },//default 0 PV First, 1 PV&Utility, 2 PV Only
                 utiChargeStart: { type: "number", minimum: 0, maximum: 23 },
                 utiChargeEnd: { type: "number", minimum: 0, maximum: 23 }
@@ -601,14 +631,14 @@ export class GrowattSPF5000 implements Inverter {
         }
 
         const writeRegisters1: Array<number> = [            
-            this.touChargingValues.uwAC2BatVolt
+            (this.touChargingValues.uwAC2BatVolt * 10)
         ]
 		const writeRegisters2: Array<number> = [            
             this.touChargingValues.chargeConfig
         ]
         const writeRegisters3: Array<number> = [
-            (this.touChargingValues.utiChargeStart << 8),
-            (this.touChargingValues.utiChargeEnd << 8)
+            (this.touChargingValues.utiChargeStart),
+            (this.touChargingValues.utiChargeEnd)
         ]
 
         // Write writeRegisters1 to holding register 95
@@ -639,12 +669,12 @@ export class GrowattSPF5000 implements Inverter {
         }
 
         const writeRegisters1: Array<number> = [
-            this.touDischargingValues.batLowToUtiVolt
+            (this.touDischargingValues.batLowToUtiVolt * 10)
         ]
 
         const writeRegisters2: Array<number> = [
-            (this.touDischargingValues.utiOutStart << 8),
-            (this.touDischargingValues.utiOutEnd << 8)
+            (this.touDischargingValues.utiOutStart),
+            (this.touDischargingValues.utiOutEnd)
         ]
 
         // Write writeRegisters1 to holding register 37
@@ -666,10 +696,10 @@ export class GrowattSPF5000 implements Inverter {
 
         // TODO review why this is saved to class scoped variable and returned from a private function
         this.touChargingValues = {
-            uwAC2BatVolt: data2[0],
+            uwAC2BatVolt: (data2[0]/10),
             chargeConfig: data1[2],
-            utiChargeStart: data1[6] >> 8,            
-            utiChargeEnd: data1[7] >> 8            
+            utiChargeStart: data1[6],            
+            utiChargeEnd: data1[7]            
         }
 
         return this.touChargingValues
@@ -688,9 +718,9 @@ export class GrowattSPF5000 implements Inverter {
 
         // TODO review why this is saved to class scoped variable and returned from a private function
         this.touDischargingValues = {
-            batLowToUtiVolt: data3[0],
-            utiOutStart: data1[0] >> 8,            
-            utiOutEnd: data1[1] >> 8            
+            batLowToUtiVolt: (data3[0]/10), //in the Register is the Value as val in 0.1 units (300 means 30)
+            utiOutStart: data1[0],            
+            utiOutEnd: data1[1]            
         }
 
         return this.touDischargingValues
@@ -744,7 +774,7 @@ export class GrowattSPF5000 implements Inverter {
         }
     }
 
-    private parseInputRegisters(inputRegisters: ReadRegisterResult) {
+    private parseInputRegisters1(inputRegisters: ReadRegisterResult) {
         const { data } = inputRegisters
 
         const statusMap = {
@@ -761,7 +791,25 @@ export class GrowattSPF5000 implements Inverter {
 			10: 'AC charge and Bypass',
 			11: 'Bypass',
 			12: 'PV charge and Discharge'
+        }        
+
+        return {
+            inverterStatus: statusMap[data[0]] || data[0], // Status from map above or the numeric value
+            ppv: (data[3] << 16 | data[4]) / 10.0, // Combined PV power (W) ToDo - check if necessary for spf5000, same with ppv1
+            vpv1: data[1] / 10.0, // PV1 voltage (V) 
+            ppv1: (data[3] << 16 | data[4]) / 10.0, // PV1 power (W)
+            vpv2: data[2] / 10.0, // PV2 voltage (V)
+            ppv2: (data[5] << 16 | data[6]) / 10.0, // PV2 power (W)
+			buck1curr: (data[7]/10), // current to battery 1 now
+            vgrid: data[20] / 10.0, // Grid voltage (V)           
+            inverterTemperature: data[25] / 10.0, //°C           
+            soc: data[18], // Battery state of charge (%)
         }
+    }
+
+	private parseInputRegisters2(inputRegisters2: ReadRegisterResult, offset2: number, inputRegisters3: ReadRegisterResult, offset3: number) {
+        const { data:data2 } = inputRegisters2;  
+		const { data:data3 } = inputRegisters3;      
 
         const errorMap = {
             2: 'Over Temperature',
@@ -784,35 +832,35 @@ export class GrowattSPF5000 implements Inverter {
         }
 
         return {
-            inverterStatus: statusMap[data[0]] || data[0], // Status from map above or the numeric value
-            ppv: (data[3] << 16 | data[4]) / 10.0, // Combined PV power (W) ToDo - check if necessary for spf5000, same with ppv1
-            vpv1: data[1] / 10.0, // PV1 voltage (V) 
-            ppv1: (data[3] << 16 | data[4]) / 10.0, // PV1 power (W)
-            vpv2: data[2] / 10.0, // PV2 voltage (V)
-            ppv2: (data[5] << 16 | data[6]) / 10.0, // PV2 power (W)
-            vgrid: data[20] / 10.0, // Grid voltage (V)
-            epvToday: ((data[48] << 16 | data[49]) + (data[52] << 16 | data[53])) / 10.0, // Combined PV energy today (kWH) (achieved by adding PV1 and PV2)
-            epvTotal: ((data[50] << 16 | data[51]) + (data[54] << 16 | data[55]))/ 10.0, // Combined PV energy total (kWH)
-            inverterTemperature: data[25] / 10.0, //°C
-            inverterError: errorMap[data[40]] || data[40],
-
-			pDischarge: (data[73] << 16 | data[74]) / 10.0, // Battery discharge power (W)
-            pCharge: (data[77] << 16 | data[78]) / 10.0, // Battery charge power (W)
-            soc: data[18], // Battery state of charge (%)
-            pImport: (data[36] << 16 | data[37]) / 10.0, // Import power (W) - AC Charge Watt
-            pExport: (data[69] << 16 | data[70]) / 10.0, // Export power (W)
-            pLoad: (data[69] << 16 | data[70]) / 10.0, // Load (consumption) power (W) - ToDo: identify registry for this data and difference to @pExport
-			eImportToday: (data[48] << 16 | data[49]) / 10.0, // Import energy today (kWh)
-            eImportTotal: (data[50] << 16 | data[51]) / 10.0, // Import energy total (kWh)
-            eExportToday: (data[85] << 16 | data[86]) / 10.0, // Export energy today (kWh) - ToDo: Verify if this registers are correct
-            eExportTotal: (data[87] << 16 | data[88]) / 10.0, // Export energy total (kWh) - ToDo: Verify if this registers are correct
-			eDischargeToday: (data[60] << 16 | data[61]) / 10.0, // Battery discharge energy today (kWh)
-			eDischargeTotal: (data[62] << 16 | data[63]) / 10.0, // Battery discharge energy total (kWh)
-			eChargeToday: (data[60] << 16 | data[61]) / 10.0, // Battery charge energy today (kWh) - ToDo - identify registries with this data
-            eChargeTotal: (data[62] << 16 | data[63]) / 10.0, // Battery charge energy total (kWh) - ToDo - identify registries with this data
-			eLoadToday: (data[64] << 16 | data[65]) / 10.0, // Load energy today (kWh)
-            eLoadTotal: (data[66] << 16 | data[67]) / 10.0, // Load energy total (kWh)
+            epvToday: ((data2[48 - offset2] << 16 | data2[49 - offset2]) + (data3[52 - offset3] << 16 | data3[53 - offset3])) / 10.0, // Combined PV energy today (kWH) (achieved by adding PV1 and PV2)
+            epvTotal: ((data2[50 - offset2] << 16 | data3[51 - offset3]) + (data3[54 - offset3] << 16 | data3[55 - offset3]))/ 10.0, // Combined PV energy total (kWH)
+            inverterError: errorMap[data2[40 - offset2]] || data2[40 - offset2],			
+            pImport: (data2[36 - offset2] << 16 | data2[37 - offset2]) / 10.0, // Import power (W) - AC Charge Watt
+			constantpowerok: (data2[47 - offset2]),
+			eImportToday: (data2[48 - offset2] << 16 | data2[49 - offset2]) / 10.0, // Import energy today (kWh)
+            eImportTotal: (data2[50 - offset2] << 16 | data2[51 - offset2]) / 10.0, // Import energy total (kWh)
+			
+			pDischarge: (data3[73 - offset3] << 16 | data3[74 - offset3]) / 10.0, // Battery discharge power (W)
+            pExport: (data3[69 - offset3] << 16 | data3[70 - offset3]) / 10.0, // Export power (W)
+            pLoad: (data3[69 - offset3] << 16 | data3[70 - offset3]) / 10.0, // Load (consumption) power (W) - ToDo: identify registry for this data and difference to @pExport
+            
+			eDischargeToday: (data3[60 - offset3] << 16 | data3[61 - offset3]) / 10.0, // Battery discharge energy today (kWh)
+			eDischargeTotal: (data3[62 - offset3] << 16 | data3[63 - offset3]) / 10.0, // Battery discharge energy total (kWh)
+			eChargeToday: (data3[60 - offset3] << 16 | data3[61 - offset3]) / 10.0, // Battery charge energy today (kWh) - ToDo - identify registries with this data
+            eChargeTotal: (data3[62 - offset3] << 16 | data3[63 - offset3]) / 10.0, // Battery charge energy total (kWh) - ToDo - identify registries with this data
+			eLoadToday: (data3[64 - offset3] << 16 | data3[65 - offset3]) / 10.0, // Load energy today (kWh)
+            eLoadTotal: (data3[66 - offset3] << 16 | data3[67 - offset3]) / 10.0, // Load energy total (kWh)
         }
     }
+	
+	private parseInputRegisters4(inputRegisters: ReadRegisterResult, offset4: number) {
+        const { data } = inputRegisters
+
+        return {
+            pCharge: (data[77 - offset4] << 16 | data[78 - offset4]) / 10.0, // Battery charge power (W)
+            eExportToday: (data[85 - offset4] << 16 | data[86 - offset4]) / 10.0, // Export energy today (kWh) - ToDo: Verify if this registers are correct
+            eExportTotal: (data[87 - offset4] << 16 | data[88 - offset4]) / 10.0, // Export energy total (kWh) - ToDo: Verify if this registers are correct
+        }
+    }	
     
 }
