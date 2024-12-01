@@ -837,19 +837,19 @@ export class GrowattSPF5000 implements Inverter {
             inverterError: errorMap[data2[40 - offset2]] || data2[40 - offset2],			
             pImport: (data2[36 - offset2] << 16 | data2[37 - offset2]) / 10.0, // Import power (W) - AC Charge Watt
 			constantpowerok: (data2[47 - offset2]),
-			eImportToday: (data2[48 - offset2] << 16 | data2[49 - offset2]) / 10.0, // Import energy today (kWh)
-            eImportTotal: (data2[50 - offset2] << 16 | data2[51 - offset2]) / 10.0, // Import energy total (kWh)
+			eImportToday: (data3[56 - offset3] << 16 | data3[57 - offset3]) / 10.0, // Import energy today from Grid (kWh)
+            eImportTotal: (data3[58 - offset3] << 16 | data3[59 - offset3]) / 10.0, // Import energy total from Grid (kWh)
 			
 			pDischarge: (data3[73 - offset3] << 16 | data3[74 - offset3]) / 10.0, // Battery discharge power (W)
             pExport: (data3[69 - offset3] << 16 | data3[70 - offset3]) / 10.0, // Export power (W)
-            pLoad: (data3[69 - offset3] << 16 | data3[70 - offset3]) / 10.0, // Load (consumption) power (W) - ToDo: identify registry for this data and difference to @pExport
+            pLoad: (data3[71 - offset3] << 16 | data3[72 - offset3]) / 10.0, // Load (consumption) power (W) - from Battery + from Sun and Grid
             
 			eDischargeToday: (data3[60 - offset3] << 16 | data3[61 - offset3]) / 10.0, // Battery discharge energy today (kWh)
 			eDischargeTotal: (data3[62 - offset3] << 16 | data3[63 - offset3]) / 10.0, // Battery discharge energy total (kWh)
-			eChargeToday: (data3[60 - offset3] << 16 | data3[61 - offset3]) / 10.0, // Battery charge energy today (kWh) - ToDo - identify registries with this data
+			eChargeToday: (data3[60 - offset3] << 16 | data3[61 - offset3]) / 10.0, // Battery charge energy today (kWh) - ToDo - identify registries with this data, could be same as epv1?
             eChargeTotal: (data3[62 - offset3] << 16 | data3[63 - offset3]) / 10.0, // Battery charge energy total (kWh) - ToDo - identify registries with this data
-			eLoadToday: (data3[64 - offset3] << 16 | data3[65 - offset3]) / 10.0, // Load energy today (kWh)
-            eLoadTotal: (data3[66 - offset3] << 16 | data3[67 - offset3]) / 10.0, // Load energy total (kWh)
+			eLoadToday: (data3[64 - offset3] << 16 | data3[65 - offset3]) / 10.0, // Load energy from Grid today (kWh)
+            eLoadTotal: (data3[66 - offset3] << 16 | data3[67 - offset3]) / 10.0, // Load energy total only from Grid (kWh)
         }
     }
 	
