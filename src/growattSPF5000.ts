@@ -698,8 +698,8 @@ export class GrowattSPF5000 implements Inverter {
         this.touChargingValues = {
             uwAC2BatVolt: (data2[0]/10),
             chargeConfig: data1[2],
-            utiChargeStart: data1[6],            
-            utiChargeEnd: data1[7]            
+            utiChargeStart: data1[5],
+            utiChargeEnd: data1[6]
         }
 
         return this.touChargingValues
